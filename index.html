@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>A-Frame GPS POI Kameraansicht mit 2D-Karte</title>
+
+  <!-- A-Frame + AR.js Location Based AR -->
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+
+  <!-- OpenLayers für die alternative 2D-Karte -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@10.9.0/ol.css" />
+  <script src="https://cdn.jsdelivr.net/npm/ol@10.9.0/dist/ol.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="view-switch" aria-label="Ansicht wechseln">
+    <button id="arViewButton" class="active" type="button">AR</button>
+    <button id="mapViewButton" type="button">2D-Karte</button>
+  </div>
+
+  <div id="ui">
+    <div id="status">Starte Kamera und Standort …</div>
+    <div class="hint">
+      Die POIs werden als Marker direkt im Kamerabild angezeigt. Alternativ kannst du oben zur 2D-Karte wechseln.
+    </div>
+    <div id="poiList"></div>
+  </div>
+
+  <section id="map-view" aria-label="2D-Karte">
+    <div id="map"></div>
+
+    <div id="layer-control">
+      <h2>2D-Karte</h2>
+
+      <label>
+        <input type="radio" name="base-layer" value="osm" checked />
+        Straßenkarte
+      </label>
+
+      <label>
+        <input type="radio" name="base-layer" value="satellite" />
+        Satellitenbild
+      </label>
+
+      <label>
+        <input type="radio" name="base-layer" value="topo" />
+        Topografische Karte
+      </label>
+
+      <hr />
+
+      <label>
+        <input type="checkbox" id="poi-toggle" checked />
+        POIs anzeigen
+      </label>
+
+      <label>
+        <input type="checkbox" id="location-toggle" checked />
+        Standort anzeigen
+      </label>
+
+      <label>
+        <input type="checkbox" id="heading-toggle" checked />
+        Blickrichtung anzeigen
+      </label>
+
+      <button id="locate-button" type="button">Meinen Standort suchen</button>
+      <button id="heading-button" type="button">Blickrichtung aktivieren</button>
+    </div>
+
+    <div id="route-info">
+      <strong>Route</strong>
+
+      <label for="route-profile">Verkehrsmittel:</label>
+      <select id="route-profile">
+        <option value="car">Auto</option>
+        <option value="bike">Fahrrad</option>
+        <option value="foot">Fuß</option>
+      </select>
+
+      <p id="route-text">Wähle einen POI auf der Karte aus, um eine Route zu berechnen.</p>
+      <button id="clear-route-button" type="button">Route löschen</button>
+    </div>
+
+    <div id="popup" class="ol-popup">
+      <button id="popup-closer" class="ol-popup-closer" type="button">×</button>
+      <div id="popup-content"></div>
+    </div>
+  </section>
+
+  <a-scene
+    id="ar-scene"
+    vr-mode-ui="enabled: false"
+    embedded
+    renderer="antialias: true; alpha: true"
+    arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false"
+  >
+    <!-- Diese Kamera wird von AR.js mit dem echten GPS-Standort verbunden -->
+    <a-camera gps-new-camera="gpsMinDistance: 2"></a-camera>
+  </a-scene>
+
+  <script src="app.js"></script>
+</body>
+</html>
