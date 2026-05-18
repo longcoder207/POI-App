@@ -4,6 +4,11 @@
 // Standort: Geolocation API
 // Blickrichtung: DeviceOrientation API
 // 2D-Karte: OpenLayers
+//
+// Wichtig:
+// Wenn auf dem iPhone keine Blickrichtung erlaubt/geliefert wird,
+// werden sichtbare POIs als Fallback vor der Kamera angezeigt.
+// Sobald die Blickrichtung verfügbar ist, werden sie richtungsbasiert positioniert.
 
 const POIS = [
   {
@@ -67,6 +72,7 @@ let currentHeading = null;
 
 let cameraStreamStarted = false;
 let orientationStarted = false;
+let orientationPermissionState = "unknown";
 let geoWatchId = null;
 
 let map = null;
@@ -201,6 +207,21 @@ function gpsToAFramePosition(userLat, userLon, poiLat, poiLon) {
   };
 }
 
+function getFallbackAFramePosition(index) {
+  // Fallback ohne Kompass:
+  // POIs werden sichtbar vor der Kamera gestaffelt.
+  // So siehst du sicher, dass die Marker grundsätzlich funktionieren.
+  const fallbackPositions = [
+    { x: -8, y: 0, z: -18 },
+    { x: 0, y: 0.8, z: -22 },
+    { x: 8, y: 1.6, z: -18 },
+    { x: -12, y: 2.4, z: -26 },
+    { x: 12, y: 3.2, z: -26 }
+  ];
+
+  return fallbackPositions[index % fallbackPositions.length];
+}
+
 function updateAFramePoiPositions(latitude, longitude) {
   let visiblePoiCount = 0;
 
@@ -224,18 +245,24 @@ function updateAFramePoiPositions(latitude, longitude) {
       return;
     }
 
-    const position = gpsToAFramePosition(
-      latitude,
-      longitude,
-      poi.latitude,
-      poi.longitude
-    );
+    let position;
 
-    const heightOffset = visiblePoiCount * 0.8;
+    if (currentHeading === null) {
+      position = getFallbackAFramePosition(visiblePoiCount);
+    } else {
+      position = gpsToAFramePosition(
+        latitude,
+        longitude,
+        poi.latitude,
+        poi.longitude
+      );
+
+      position.y = visiblePoiCount * 0.8;
+    }
 
     marker.setAttribute(
       "position",
-      `${position.x} ${heightOffset} ${position.z}`
+      `${position.x} ${position.y} ${position.z}`
     );
 
     marker.setAttribute("visible", "true");
@@ -277,7 +304,7 @@ async function startAFrameCamera() {
     }
 
     cameraStreamStarted = true;
-    setStatus("Kamera aktiv. Standort und Blickrichtung werden angefragt …");
+    setStatus("Kamera aktiv. Standort wird angefragt …");
 
     return true;
   } catch (error) {
@@ -390,7 +417,7 @@ function updatePoiDistances(position) {
 
   const headingText =
     currentHeading === null
-      ? "Blickrichtung fehlt"
+      ? "Blickrichtung fehlt, Fallback aktiv"
       : `Blickrichtung ${Math.round(currentHeading)}°`;
 
   setStatus(
@@ -465,8 +492,6 @@ function updateAFrameCameraHeading(headingDegrees) {
     return;
   }
 
-  // Der Kamera-Rig wird gegen die Kompassrichtung gedreht,
-  // damit die Weltkoordinaten stabil bleiben.
   cameraRig.setAttribute("rotation", `0 ${-headingDegrees} 0`);
 }
 
@@ -490,17 +515,19 @@ function handleDeviceOrientation(event) {
 async function activateHeading() {
   try {
     if (!window.DeviceOrientationEvent) {
-      setStatus("Dieses Gerät unterstützt keine Geräteausrichtung.");
+      orientationPermissionState = "unsupported";
       return false;
     }
 
     if (typeof DeviceOrientationEvent.requestPermission === "function") {
       const permission = await DeviceOrientationEvent.requestPermission();
+      orientationPermissionState = permission;
 
       if (permission !== "granted") {
-        setStatus("Blickrichtung wurde nicht erlaubt. POIs können außerhalb des Sichtfelds liegen.");
         return false;
       }
+    } else {
+      orientationPermissionState = "granted";
     }
 
     if (!orientationStarted) {
@@ -516,19 +543,23 @@ async function activateHeading() {
     return true;
   } catch (error) {
     console.error("Blickrichtung-Fehler:", error);
-    setStatus("Blickrichtung konnte nicht aktiviert werden.");
+    orientationPermissionState = "error";
     return false;
   }
 }
 
 async function startCameraAndLocation() {
+  // Wichtig für iPhone:
+  // Die Blickrichtung wird zuerst im direkten Button-Klick angefragt.
+  // Danach starten Kamera und Standort.
+  await activateHeading();
+
   const cameraOk = await startAFrameCamera();
 
   if (!cameraOk) {
     return;
   }
 
-  await activateHeading();
   startGeolocationWatch();
 }
 
