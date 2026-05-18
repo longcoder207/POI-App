@@ -182,19 +182,22 @@
     #layer-control,
     #route-info {
       position: absolute;
-      z-index: 10;
+      z-index: 12;
       padding: 14px;
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+      background: rgba(255, 255, 255, 0.96);
+      border-radius: 14px;
+      box-shadow: 0 3px 14px rgba(0, 0, 0, 0.25);
       font-size: 14px;
       color: #111827;
+      backdrop-filter: blur(8px);
     }
 
     #layer-control {
       top: 78px;
       right: 16px;
-      width: 230px;
+      width: 260px;
+      max-height: calc(100vh - 110px);
+      overflow: auto;
     }
 
     #layer-control h2 {
@@ -213,20 +216,23 @@
     }
 
     #layer-control button,
-    #route-info button {
+    #route-info button,
+    .panel-button {
       width: 100%;
       margin-top: 8px;
-      padding: 8px 10px;
+      padding: 9px 10px;
       border: none;
-      border-radius: 6px;
+      border-radius: 8px;
       background: #1f2937;
       color: white;
       cursor: pointer;
       font: inherit;
+      font-weight: 650;
     }
 
     #layer-control button:hover,
-    #route-info button:hover {
+    #route-info button:hover,
+    .panel-button:hover {
       background: #374151;
     }
 
@@ -236,10 +242,91 @@
       margin: 12px 0;
     }
 
+    .map-section-title {
+      margin: 12px 0 8px;
+      font-weight: 800;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #4b5563;
+    }
+
+    details.map-details {
+      margin-top: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      background: #f9fafb;
+      overflow: hidden;
+    }
+
+    details.map-details > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 11px 12px;
+      font-weight: 800;
+      color: #111827;
+      background: #f3f4f6;
+      user-select: none;
+    }
+
+    details.map-details > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    details.map-details > summary::after {
+      content: "öffnen";
+      float: right;
+      font-weight: 700;
+      font-size: 12px;
+      color: #2563eb;
+    }
+
+    details.map-details[open] > summary::after {
+      content: "geöffnet";
+      color: #16a34a;
+    }
+
+    .details-content {
+      padding: 12px;
+    }
+
+    .details-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .details-header strong {
+      font-size: 14px;
+    }
+
+    .close-panel {
+      width: auto !important;
+      min-width: 34px;
+      height: 34px;
+      margin: 0 !important;
+      padding: 0 !important;
+      border-radius: 999px !important;
+      background: #111827 !important;
+      color: #fff !important;
+      font-size: 20px !important;
+      line-height: 1 !important;
+    }
+
+    .help-text {
+      margin: 8px 0 0;
+      font-size: 12px;
+      line-height: 1.35;
+      color: #6b7280;
+    }
+
     #route-info {
       left: 16px;
       bottom: 24px;
-      width: 280px;
+      width: 300px;
+      max-width: calc(100vw - 32px);
     }
 
     #route-info p {
@@ -250,9 +337,9 @@
     #route-info select {
       width: 100%;
       margin: 8px 0 10px;
-      padding: 7px 8px;
+      padding: 8px 9px;
       border: 1px solid #d1d5db;
-      border-radius: 6px;
+      border-radius: 8px;
       background: white;
       font-size: 14px;
     }
@@ -301,33 +388,110 @@
       line-height: 1.4;
     }
 
-    @media (max-width: 700px) {
+    @media (max-width: 820px) {
+      body.map-mode #ui {
+        display: none;
+      }
+
       #view-switch {
         left: 12px;
         right: auto;
       }
 
-      #ui {
-        top: 62px;
-      }
-
-      body.map-mode #ui {
-        display: none;
-      }
-
       #layer-control {
-        top: 70px;
+        top: 64px;
+        left: 10px;
         right: 10px;
-        width: calc(100% - 20px);
-        max-height: 42vh;
-        overflow: auto;
+        width: auto;
+        max-height: 44vh;
+        padding: 12px;
+      }
+
+      #layer-control h2 {
+        font-size: 15px;
+        margin-bottom: 8px;
       }
 
       #route-info {
         left: 10px;
         right: 10px;
-        bottom: 16px;
+        bottom: 12px;
         width: auto;
+        max-height: 34vh;
+        overflow: auto;
+        padding: 12px;
+      }
+
+      #route-info strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      #route-info p {
+        font-size: 13px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      #view-switch {
+        top: 10px;
+        left: 10px;
+        right: 10px;
+        justify-content: center;
+      }
+
+      #view-switch button {
+        flex: 1;
+        padding: 8px 10px;
+        font-size: 13px;
+      }
+
+      #ui {
+        top: 58px;
+        left: 10px;
+        right: 10px;
+        font-size: 13px;
+      }
+
+      #layer-control {
+        top: 58px;
+        max-height: 42vh;
+        font-size: 13px;
+      }
+
+      #layer-control label {
+        margin-bottom: 7px;
+      }
+
+      #layer-control button,
+      #route-info button,
+      .panel-button {
+        padding: 10px;
+        font-size: 13px;
+      }
+
+      #route-info {
+        bottom: 10px;
+        font-size: 13px;
+        max-height: 35vh;
+      }
+
+      details.map-details > summary {
+        padding: 10px;
+      }
+
+      .details-content {
+        padding: 10px;
+      }
+    }
+
+    @media (max-height: 700px) and (max-width: 820px) {
+      #layer-control {
+        max-height: 38vh;
+      }
+
+      #route-info {
+        max-height: 30vh;
       }
     }
   </style>
@@ -360,6 +524,8 @@
     <div id="layer-control">
       <h2>2D-Karte</h2>
 
+      <div class="map-section-title">Kartentyp</div>
+
       <label>
         <input type="radio" name="base-layer" value="osm" checked />
         Straßenkarte
@@ -377,23 +543,48 @@
 
       <hr />
 
+      <div class="map-section-title">POIs</div>
+
       <label>
         <input type="checkbox" id="poi-toggle" checked />
         POIs anzeigen
       </label>
 
-      <label>
-        <input type="checkbox" id="location-toggle" checked />
-        Standort anzeigen
-      </label>
+      <details id="location-orientation-panel" class="map-details">
+        <summary>Ortung & Orientierung</summary>
 
-      <label>
-        <input type="checkbox" id="heading-toggle" checked />
-        Blickrichtung anzeigen
-      </label>
+        <div class="details-content">
+          <div class="details-header">
+            <strong>Standort & Blickrichtung</strong>
+            <button
+              class="close-panel"
+              type="button"
+              aria-label="Ortung und Orientierung schließen"
+              onclick="document.getElementById('location-orientation-panel').removeAttribute('open')"
+            >
+              ×
+            </button>
+          </div>
 
-      <button id="locate-button" type="button">Meinen Standort suchen</button>
-      <button id="heading-button" type="button">Blickrichtung aktivieren</button>
+          <label>
+            <input type="checkbox" id="location-toggle" checked />
+            Standort anzeigen
+          </label>
+
+          <label>
+            <input type="checkbox" id="heading-toggle" checked />
+            Blickrichtung anzeigen
+          </label>
+
+          <button id="locate-button" type="button">Meinen Standort suchen</button>
+          <button id="heading-button" type="button">Blickrichtung aktivieren</button>
+
+          <p class="help-text">
+            Diese Funktionen sind nur sichtbar, wenn du diesen Bereich öffnest.
+            Über das X wird der Bereich wieder geschlossen.
+          </p>
+        </div>
+      </details>
     </div>
 
     <div id="route-info">
