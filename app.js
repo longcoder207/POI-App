@@ -66,6 +66,8 @@ let currentHeading = null;
 
 let cameraStreamStarted = false;
 let orientationStarted = false;
+let geoWatchId = null;
+let geoStarted = false;
 
 let map = null;
 let selectedPoiFeature = null;
@@ -165,21 +167,28 @@ function formatDuration(seconds) {
 }
 
 function gpsToAFramePosition(userLat, userLon, poiLat, poiLon) {
-  const metersPerDegreeLat = 111320;
-  const metersPerDegreeLon = 111320 * Math.cos(toRad(userLat));
+  const dLat = toRad(poiLat - userLat);
+  const dLon = toRad(poiLon - userLon);
 
-  const eastMeters = (poiLon - userLon) * metersPerDegreeLon;
-  const northMeters = (poiLat - userLat) * metersPerDegreeLat;
+  const lat1 = toRad(userLat);
+  const lat2 = toRad(poiLat);
 
-  // 1 A-Frame-Einheit entspricht hier ungefähr 2 echten Metern.
-  // Falls die POIs zu nah sind: Wert erhöhen.
-  // Falls die POIs zu weit weg sind: Wert verringern.
-  const sceneScale = 0.5;
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+
+  const bearingRad = Math.atan2(y, x);
+  const realDistance = distanceInMeters(userLat, userLon, poiLat, poiLon);
+
+  // Für die AR-Ansicht werden reale Entfernungen visuell zusammengedrückt,
+  // damit nahe POIs auf dem Bildschirm sichtbar bleiben.
+  const visualDistance = Math.min(Math.max(realDistance * 0.06, 8), 35);
 
   return {
-    x: eastMeters * sceneScale,
+    x: Math.sin(bearingRad) * visualDistance,
     y: 0,
-    z: -northMeters * sceneScale
+    z: -Math.cos(bearingRad) * visualDistance
   };
 }
 
@@ -200,9 +209,6 @@ function updateAFramePoiPositions(latitude, longitude) {
       poi.longitude
     );
 
-    // Nur nahe POIs anzeigen.
-    // Für Herscheid reichen 3000 m.
-    // Wenn du weiter entfernte POIs sehen willst, erhöhe den Wert.
     const maxVisibleDistance = 3000;
 
     if (distance > maxVisibleDistance) {
@@ -218,8 +224,7 @@ function updateAFramePoiPositions(latitude, longitude) {
       poi.longitude
     );
 
-    // Kleine Höhenstaffelung, falls mehrere POIs sehr dicht beieinander liegen.
-    const heightOffset = visiblePoiCount * 1.2;
+    const heightOffset = visiblePoiCount * 0.8;
 
     marker.setAttribute(
       "position",
@@ -234,12 +239,12 @@ function updateAFramePoiPositions(latitude, longitude) {
 
 async function startAFrameCamera() {
   if (cameraStreamStarted) {
-    return;
+    return true;
   }
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     setStatus("Dieser Browser unterstützt keine Kamerafreigabe.");
-    return;
+    return false;
   }
 
   try {
@@ -254,13 +259,22 @@ async function startAFrameCamera() {
 
     if (cameraVideo) {
       cameraVideo.srcObject = stream;
+
+      try {
+        await cameraVideo.play();
+      } catch (playError) {
+        console.warn("Video konnte nicht automatisch abgespielt werden:", playError);
+      }
     }
 
     cameraStreamStarted = true;
-    setStatus("Kamera aktiv. Warte auf Standort …");
+    setStatus("Kamera aktiv. Standort wird angefragt …");
+
+    return true;
   } catch (error) {
     console.error("Kamera-Fehler:", error);
     setStatus("Kamera konnte nicht gestartet werden. Bitte Kamerazugriff erlauben.");
+    return false;
   }
 }
 
@@ -273,30 +287,26 @@ function createPoiMarker(poi) {
   const markerRoot = document.createElement("a-entity");
 
   markerRoot.setAttribute("id", poi.id);
-
-  // Wichtig:
-  // POIs sind beim Start unsichtbar.
-  // Sie werden erst sichtbar, wenn GPS eine Position geliefert hat.
   markerRoot.setAttribute("visible", "false");
   markerRoot.setAttribute("position", "0 -9999 0");
 
   const pinHead = document.createElement("a-sphere");
-  pinHead.setAttribute("radius", "1.2");
-  pinHead.setAttribute("position", "0 3.2 0");
+  pinHead.setAttribute("radius", "2.2");
+  pinHead.setAttribute("position", "0 5 0");
   pinHead.setAttribute("material", `color: ${poi.color}; opacity: 0.95`);
 
   const pinTip = document.createElement("a-cone");
-  pinTip.setAttribute("radius-bottom", "0.8");
+  pinTip.setAttribute("radius-bottom", "1.4");
   pinTip.setAttribute("radius-top", "0");
-  pinTip.setAttribute("height", "2.4");
-  pinTip.setAttribute("position", "0 1.6 0");
+  pinTip.setAttribute("height", "4");
+  pinTip.setAttribute("position", "0 2.6 0");
   pinTip.setAttribute("rotation", "180 0 0");
   pinTip.setAttribute("material", `color: ${poi.color}; opacity: 0.95`);
 
   const labelBackground = document.createElement("a-plane");
-  labelBackground.setAttribute("position", "0 5.7 -0.05");
-  labelBackground.setAttribute("width", "12");
-  labelBackground.setAttribute("height", "2.8");
+  labelBackground.setAttribute("position", "0 9 -0.05");
+  labelBackground.setAttribute("width", "18");
+  labelBackground.setAttribute("height", "4");
   labelBackground.setAttribute(
     "material",
     "color: black; opacity: 0.65; transparent: true"
@@ -310,8 +320,8 @@ function createPoiMarker(poi) {
   label.setAttribute("anchor", "center");
   label.setAttribute("baseline", "center");
   label.setAttribute("face-camera-y", "");
-  label.setAttribute("scale", "2.8 2.8 2.8");
-  label.setAttribute("position", "0 5.7 0");
+  label.setAttribute("scale", "4 4 4");
+  label.setAttribute("position", "0 9 0");
   label.setAttribute("material", "color: white");
 
   pinHead.setAttribute(
@@ -378,12 +388,57 @@ function handleGeoError(error) {
   console.error("Geolocation-Fehler:", error);
 
   const messages = {
-    1: "Standortzugriff wurde abgelehnt. Bitte im Browser erlauben.",
-    2: "Standort konnte nicht bestimmt werden. Gehe möglichst nach draußen.",
-    3: "Standortabfrage hat zu lange gedauert."
+    1: "Standortzugriff wurde abgelehnt. Bitte in Safari den Standort erlauben.",
+    2: "Standort konnte nicht bestimmt werden. Bitte Ortungsdienste prüfen und möglichst nach draußen gehen.",
+    3: "Standortabfrage hat zu lange gedauert. Tippe erneut auf Kamera starten."
   };
 
   setStatus(messages[error.code] || "Unbekannter Standortfehler.");
+}
+
+function startGeolocationWatch() {
+  if (!window.isSecureContext) {
+    setStatus("Standort benötigt HTTPS. Bitte GitHub Pages mit https:// öffnen.");
+    return;
+  }
+
+  if (!("geolocation" in navigator)) {
+    setStatus("Dieses Gerät unterstützt keine Geolocation API.");
+    return;
+  }
+
+  setStatus("Standort wird angefragt …");
+
+  const geoOptions = {
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 20000
+  };
+
+  navigator.geolocation.getCurrentPosition(
+    function (position) {
+      geoStarted = true;
+      updatePoiDistances(position);
+
+      if (geoWatchId === null) {
+        geoWatchId = navigator.geolocation.watchPosition(
+          updatePoiDistances,
+          handleGeoError,
+          geoOptions
+        );
+      }
+    },
+    handleGeoError,
+    geoOptions
+  );
+}
+
+async function startCameraAndLocation() {
+  const cameraOk = await startAFrameCamera();
+
+  if (cameraOk) {
+    startGeolocationWatch();
+  }
 }
 
 function transformCoords(lon, lat) {
@@ -1066,23 +1121,7 @@ function switchView(mode) {
       }
     }, 50);
   } else {
-    startAFrameCamera();
-  }
-}
-
-function startGeolocationWatch() {
-  setStatus("Prüfe Standort-Unterstützung …");
-
-  if ("geolocation" in navigator) {
-    setStatus("Standort wird angefragt …");
-
-    navigator.geolocation.watchPosition(updatePoiDistances, handleGeoError, {
-      enableHighAccuracy: true,
-      maximumAge: 1000,
-      timeout: 15000
-    });
-  } else {
-    setStatus("Dieses Gerät unterstützt keine Geolocation API.");
+    startCameraAndLocation();
   }
 }
 
@@ -1113,20 +1152,16 @@ function initializeApp() {
   }
 
   if (cameraStartButton) {
+    cameraStartButton.textContent = "Kamera und Standort starten";
+
     cameraStartButton.addEventListener("click", function () {
-      startAFrameCamera();
+      startCameraAndLocation();
     });
   }
 
   renderPois();
-  startAFrameCamera();
-  startGeolocationWatch();
 
-  window.addEventListener("resize", function () {
-    if (mapInitialized && map) {
-      map.updateSize();
-    }
-  });
+  setStatus("Tippe auf „Kamera und Standort starten“.");
 }
 
 window.addEventListener("load", initializeApp);
