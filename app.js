@@ -5,9 +5,10 @@
 // Blickrichtung: DeviceOrientation API
 // 2D-Karte: OpenLayers
 //
-// Wichtig:
-// A-Frame dreht die Kamera NICHT selbst.
-// Die POIs werden per JS relativ zur iPhone-Blickrichtung auf dem Bildschirm positioniert.
+// Debug-Version:
+// Es wird zusätzlich ein großer Test-Marker direkt vor der Kamera angezeigt.
+// Wenn dieser Marker sichtbar ist, rendert A-Frame korrekt.
+// Danach können echte POI-Positionen weiter angepasst werden.
 
 const POIS = [
   {
@@ -197,18 +198,6 @@ function calculateBearing(userLat, userLon, poiLat, poiLon) {
   return (bearingDeg + 360) % 360;
 }
 
-function getFallbackAFramePosition(index) {
-  const fallbackPositions = [
-    { x: -6, y: -1.2, z: -18 },
-    { x: 0, y: -0.8, z: -20 },
-    { x: 6, y: -1.2, z: -18 },
-    { x: -10, y: -0.4, z: -24 },
-    { x: 10, y: -0.4, z: -24 }
-  ];
-
-  return fallbackPositions[index % fallbackPositions.length];
-}
-
 function getAFramePositionForPoi(userLat, userLon, poi, visibleIndex) {
   const realDistance = distanceInMeters(
     userLat,
@@ -217,23 +206,26 @@ function getAFramePositionForPoi(userLat, userLon, poi, visibleIndex) {
     poi.longitude
   );
 
-  const visualDistance = Math.min(Math.max(realDistance * 0.06, 12), 32);
+  const visualDistance = Math.min(Math.max(realDistance * 0.06, 8), 24);
 
   if (currentHeading === null) {
-    return getFallbackAFramePosition(visibleIndex);
+    return {
+      x: -5 + visibleIndex * 5,
+      y: -1.4 + visibleIndex * 0.7,
+      z: -14
+    };
   }
 
   const bearing = calculateBearing(userLat, userLon, poi.latitude, poi.longitude);
   const relativeAngle = normalizeDegrees(bearing - currentHeading);
 
-  // Damit du die POIs sicher auf dem Bildschirm siehst,
-  // werden seitliche Winkel auf den sichtbaren Bereich geklemmt.
-  const visibleAngle = clamp(relativeAngle, -55, 55);
+  // Für den Test werden POIs bewusst in den sichtbaren Bereich geklemmt.
+  const visibleAngle = clamp(relativeAngle, -35, 35);
   const angleRad = toRad(visibleAngle);
 
   return {
     x: Math.sin(angleRad) * visualDistance,
-    y: -1.2 + visibleIndex * 0.9,
+    y: -1.4 + visibleIndex * 0.8,
     z: -Math.cos(angleRad) * visualDistance
   };
 }
@@ -322,6 +314,39 @@ async function startAFrameCamera() {
   }
 }
 
+function createDebugMarker() {
+  if (!scene) {
+    return;
+  }
+
+  const debugRoot = document.createElement("a-entity");
+  debugRoot.setAttribute("id", "debug-marker");
+  debugRoot.setAttribute("position", "0 -1.2 -10");
+  debugRoot.setAttribute("visible", "true");
+
+  const box = document.createElement("a-box");
+  box.setAttribute("position", "0 1.2 0");
+  box.setAttribute("width", "2.8");
+  box.setAttribute("height", "2.8");
+  box.setAttribute("depth", "0.4");
+  box.setAttribute("material", "color: yellow; opacity: 0.95");
+
+  const text = document.createElement("a-text");
+  text.setAttribute("value", "A-FRAME TEST");
+  text.setAttribute("align", "center");
+  text.setAttribute("anchor", "center");
+  text.setAttribute("baseline", "center");
+  text.setAttribute("position", "0 3.2 0.1");
+  text.setAttribute("scale", "2.2 2.2 2.2");
+  text.setAttribute("material", "color: black");
+  text.setAttribute("face-camera-y", "");
+
+  debugRoot.appendChild(box);
+  debugRoot.appendChild(text);
+
+  scene.appendChild(debugRoot);
+}
+
 function createPoiMarker(poi) {
   if (!scene) {
     console.error("A-Frame-Szene wurde nicht gefunden.");
@@ -335,25 +360,25 @@ function createPoiMarker(poi) {
   markerRoot.setAttribute("position", "0 -9999 0");
 
   const pinHead = document.createElement("a-sphere");
-  pinHead.setAttribute("radius", "1.05");
-  pinHead.setAttribute("position", "0 2.2 0");
-  pinHead.setAttribute("material", `color: ${poi.color}; opacity: 0.98`);
+  pinHead.setAttribute("radius", "1.6");
+  pinHead.setAttribute("position", "0 2.8 0");
+  pinHead.setAttribute("material", `color: ${poi.color}; opacity: 1`);
 
   const pinTip = document.createElement("a-cone");
-  pinTip.setAttribute("radius-bottom", "0.7");
+  pinTip.setAttribute("radius-bottom", "1.05");
   pinTip.setAttribute("radius-top", "0");
-  pinTip.setAttribute("height", "1.8");
-  pinTip.setAttribute("position", "0 0.9 0");
+  pinTip.setAttribute("height", "2.4");
+  pinTip.setAttribute("position", "0 1.1 0");
   pinTip.setAttribute("rotation", "180 0 0");
-  pinTip.setAttribute("material", `color: ${poi.color}; opacity: 0.98`);
+  pinTip.setAttribute("material", `color: ${poi.color}; opacity: 1`);
 
   const labelBackground = document.createElement("a-plane");
-  labelBackground.setAttribute("position", "0 4.1 -0.05");
-  labelBackground.setAttribute("width", "8.5");
-  labelBackground.setAttribute("height", "2.1");
+  labelBackground.setAttribute("position", "0 5.2 -0.05");
+  labelBackground.setAttribute("width", "11");
+  labelBackground.setAttribute("height", "2.8");
   labelBackground.setAttribute(
     "material",
-    "color: black; opacity: 0.72; transparent: true; side: double"
+    "color: black; opacity: 0.75; transparent: true; side: double"
   );
   labelBackground.setAttribute("face-camera-y", "");
 
@@ -364,8 +389,8 @@ function createPoiMarker(poi) {
   label.setAttribute("anchor", "center");
   label.setAttribute("baseline", "center");
   label.setAttribute("face-camera-y", "");
-  label.setAttribute("scale", "1.7 1.7 1.7");
-  label.setAttribute("position", "0 4.1 0");
+  label.setAttribute("scale", "2.1 2.1 2.1");
+  label.setAttribute("position", "0 5.2 0");
   label.setAttribute("material", "color: white");
 
   pinHead.setAttribute(
@@ -382,6 +407,7 @@ function createPoiMarker(poi) {
 }
 
 function renderPois() {
+  createDebugMarker();
   POIS.forEach(createPoiMarker);
 }
 
@@ -496,9 +522,6 @@ function getHeadingFromEvent(event) {
 }
 
 function updateAFrameCameraHeading() {
-  // Absichtlich leer:
-  // Die A-Frame-Kamera wird nicht gedreht.
-  // Stattdessen werden POIs relativ zur aktuellen Blickrichtung berechnet.
   if (cameraRig) {
     cameraRig.setAttribute("rotation", "0 0 0");
   }
