@@ -1,30 +1,8 @@
 // Beispiel-POIs: Ersetze diese Koordinaten durch deine echten POIs.
 // Diese Version nutzt A-Frame ohne AR.js.
-// Die Kamera wird über getUserMedia gestartet.
-// Die POIs werden erst nach erfolgreicher GPS-Position sichtbar gesetzt.
-
-AFRAME.registerComponent("face-camera-y", {
-  tick: function () {
-    const camera = document.querySelector("#aframeCamera");
-
-    if (!camera || !camera.object3D || !this.el.object3D) {
-      return;
-    }
-
-    const cameraWorldPosition = new AFRAME.THREE.Vector3();
-    const objectWorldPosition = new AFRAME.THREE.Vector3();
-
-    camera.object3D.getWorldPosition(cameraWorldPosition);
-    this.el.object3D.getWorldPosition(objectWorldPosition);
-
-    const dx = cameraWorldPosition.x - objectWorldPosition.x;
-    const dz = cameraWorldPosition.z - objectWorldPosition.z;
-
-    const angle = Math.atan2(dx, dz);
-
-    this.el.object3D.rotation.set(0, angle, 0);
-  }
-});
+// Kamera: getUserMedia()
+// POI-Positionierung: GPS relativ zur aktuellen Position
+// 2D-Karte: OpenLayers
 
 const POIS = [
   {
@@ -71,16 +49,16 @@ const POIS = [
   }
 ];
 
-const scene = document.querySelector("#ar-scene");
-const cameraVideo = document.querySelector("#camera-video");
-const cameraRig = document.querySelector("#cameraRig");
+let scene = null;
+let cameraVideo = null;
+let cameraRig = null;
 
-const statusEl = document.querySelector("#status");
-const poiListEl = document.querySelector("#poiList");
+let statusEl = null;
+let poiListEl = null;
 
-const arViewButton = document.querySelector("#arViewButton");
-const mapViewButton = document.querySelector("#mapViewButton");
-const cameraStartButton = document.querySelector("#cameraStartButton");
+let arViewButton = null;
+let mapViewButton = null;
+let cameraStartButton = null;
 
 let currentUserLonLat = null;
 let currentUserMapCoords = null;
@@ -107,6 +85,46 @@ let satelliteLayer = null;
 let topoLayer = null;
 
 const toRad = value => value * Math.PI / 180;
+
+function setStatus(message) {
+  if (statusEl) {
+    statusEl.textContent = message;
+  }
+}
+
+function registerFaceCameraComponent() {
+  if (typeof AFRAME === "undefined") {
+    console.warn("A-Frame ist noch nicht geladen.");
+    return;
+  }
+
+  if (AFRAME.components["face-camera-y"]) {
+    return;
+  }
+
+  AFRAME.registerComponent("face-camera-y", {
+    tick: function () {
+      const camera = document.querySelector("#aframeCamera");
+
+      if (!camera || !camera.object3D || !this.el.object3D) {
+        return;
+      }
+
+      const cameraWorldPosition = new AFRAME.THREE.Vector3();
+      const objectWorldPosition = new AFRAME.THREE.Vector3();
+
+      camera.object3D.getWorldPosition(cameraWorldPosition);
+      this.el.object3D.getWorldPosition(objectWorldPosition);
+
+      const dx = cameraWorldPosition.x - objectWorldPosition.x;
+      const dz = cameraWorldPosition.z - objectWorldPosition.z;
+
+      const angle = Math.atan2(dx, dz);
+
+      this.el.object3D.rotation.set(0, angle, 0);
+    }
+  });
+}
 
 function distanceInMeters(lat1, lon1, lat2, lon2) {
   const earthRadius = 6371000;
@@ -153,9 +171,9 @@ function gpsToAFramePosition(userLat, userLon, poiLat, poiLon) {
   const eastMeters = (poiLon - userLon) * metersPerDegreeLon;
   const northMeters = (poiLat - userLat) * metersPerDegreeLat;
 
-  // Wichtig:
-  // Nicht zu stark verkleinern, sonst liegen POIs optisch wieder zu nah beieinander.
-  // 1 A-Frame-Einheit = 2 echte Meter.
+  // 1 A-Frame-Einheit entspricht hier ungefähr 2 echten Metern.
+  // Falls die POIs zu nah sind: Wert erhöhen.
+  // Falls die POIs zu weit weg sind: Wert verringern.
   const sceneScale = 0.5;
 
   return {
@@ -182,9 +200,9 @@ function updateAFramePoiPositions(latitude, longitude) {
       poi.longitude
     );
 
-    // Nur POIs in der Nähe anzeigen.
-    // Für Herscheid reichen 3000 Meter.
-    // Falls du auch weiter entfernte POIs sehen willst, erhöhe diesen Wert.
+    // Nur nahe POIs anzeigen.
+    // Für Herscheid reichen 3000 m.
+    // Wenn du weiter entfernte POIs sehen willst, erhöhe den Wert.
     const maxVisibleDistance = 3000;
 
     if (distance > maxVisibleDistance) {
@@ -200,8 +218,7 @@ function updateAFramePoiPositions(latitude, longitude) {
       poi.longitude
     );
 
-    // Kleine Höhenstaffelung, damit Texte nicht exakt übereinander liegen,
-    // falls POIs sehr nah beieinander liegen.
+    // Kleine Höhenstaffelung, falls mehrere POIs sehr dicht beieinander liegen.
     const heightOffset = visiblePoiCount * 1.2;
 
     marker.setAttribute(
@@ -221,7 +238,7 @@ async function startAFrameCamera() {
   }
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    statusEl.textContent = "Dieser Browser unterstützt keine Kamerafreigabe.";
+    setStatus("Dieser Browser unterstützt keine Kamerafreigabe.");
     return;
   }
 
@@ -235,25 +252,31 @@ async function startAFrameCamera() {
       audio: false
     });
 
-    cameraVideo.srcObject = stream;
-    cameraStreamStarted = true;
+    if (cameraVideo) {
+      cameraVideo.srcObject = stream;
+    }
 
-    statusEl.textContent = "Kamera aktiv. Warte auf Standort …";
+    cameraStreamStarted = true;
+    setStatus("Kamera aktiv. Warte auf Standort …");
   } catch (error) {
-    console.error(error);
-    statusEl.textContent =
-      "Kamera konnte nicht gestartet werden. Bitte Kamerazugriff erlauben.";
+    console.error("Kamera-Fehler:", error);
+    setStatus("Kamera konnte nicht gestartet werden. Bitte Kamerazugriff erlauben.");
   }
 }
 
 function createPoiMarker(poi) {
+  if (!scene) {
+    console.error("A-Frame-Szene wurde nicht gefunden.");
+    return;
+  }
+
   const markerRoot = document.createElement("a-entity");
 
   markerRoot.setAttribute("id", poi.id);
 
   // Wichtig:
-  // POIs dürfen beim Start nicht sichtbar sein.
-  // Sie werden erst nach der GPS-Berechnung sichtbar und korrekt positioniert.
+  // POIs sind beim Start unsichtbar.
+  // Sie werden erst sichtbar, wenn GPS eine Position geliefert hat.
   markerRoot.setAttribute("visible", "false");
   markerRoot.setAttribute("position", "0 -9999 0");
 
@@ -315,7 +338,7 @@ function updatePoiDistances(position) {
 
   updateAFramePoiPositions(latitude, longitude);
 
-  statusEl.textContent = `Standort aktiv: ±${Math.round(accuracy)} m Genauigkeit`;
+  setStatus(`Standort aktiv: ±${Math.round(accuracy)} m Genauigkeit`);
 
   const sortedPois = POIS
     .map(poi => ({
@@ -337,26 +360,30 @@ function updatePoiDistances(position) {
     }
   });
 
-  poiListEl.innerHTML = sortedPois
-    .map((poi, index) => {
-      const className = index === 0 ? "poi-near" : "";
-      return `<div class="${className}">${poi.name}: ${Math.round(
-        poi.distance
-      )} m</div>`;
-    })
-    .join("");
+  if (poiListEl) {
+    poiListEl.innerHTML = sortedPois
+      .map((poi, index) => {
+        const className = index === 0 ? "poi-near" : "";
+        return `<div class="${className}">${poi.name}: ${Math.round(
+          poi.distance
+        )} m</div>`;
+      })
+      .join("");
+  }
 
   updateMapLocation(longitude, latitude, accuracy);
 }
 
 function handleGeoError(error) {
+  console.error("Geolocation-Fehler:", error);
+
   const messages = {
     1: "Standortzugriff wurde abgelehnt. Bitte im Browser erlauben.",
     2: "Standort konnte nicht bestimmt werden. Gehe möglichst nach draußen.",
     3: "Standortabfrage hat zu lange gedauert."
   };
 
-  statusEl.textContent = messages[error.code] || "Unbekannter Standortfehler.";
+  setStatus(messages[error.code] || "Unbekannter Standortfehler.");
 }
 
 function transformCoords(lon, lat) {
@@ -396,7 +423,15 @@ function createPoiFeatures() {
 }
 
 function initializeMap() {
-  if (mapInitialized || typeof ol === "undefined") {
+  if (mapInitialized) {
+    if (map) {
+      map.updateSize();
+    }
+    return;
+  }
+
+  if (typeof ol === "undefined") {
+    console.error("OpenLayers wurde nicht geladen.");
     return;
   }
 
@@ -556,10 +591,12 @@ function initializeMap() {
 
   map.addOverlay(popupOverlay);
 
-  popupCloser.addEventListener("click", function () {
-    popupOverlay.setPosition(undefined);
-    popupCloser.blur();
-  });
+  if (popupCloser) {
+    popupCloser.addEventListener("click", function () {
+      popupOverlay.setPosition(undefined);
+      popupCloser.blur();
+    });
+  }
 
   map.on("singleclick", function (event) {
     const feature = map.forEachFeatureAtPixel(
@@ -579,10 +616,12 @@ function initializeMap() {
       return;
     }
 
-    popupContent.innerHTML = `
-      <h3>${name}</h3>
-      <p>${description || ""}</p>
-    `;
+    if (popupContent) {
+      popupContent.innerHTML = `
+        <h3>${name}</h3>
+        <p>${description || ""}</p>
+      `;
+    }
 
     const geometry = feature.getGeometry();
 
@@ -606,7 +645,9 @@ function initializeMap() {
   }
 
   window.setTimeout(function () {
-    map.updateSize();
+    if (map) {
+      map.updateSize();
+    }
   }, 200);
 }
 
@@ -621,47 +662,62 @@ function setupMapControls() {
     });
   });
 
-  document.getElementById("poi-toggle").addEventListener("change", function () {
-    poiLayer.setVisible(this.checked);
-  });
+  const poiToggle = document.getElementById("poi-toggle");
+  if (poiToggle) {
+    poiToggle.addEventListener("change", function () {
+      poiLayer.setVisible(this.checked);
+    });
+  }
 
-  document
-    .getElementById("location-toggle")
-    .addEventListener("change", function () {
+  const locationToggle = document.getElementById("location-toggle");
+  if (locationToggle) {
+    locationToggle.addEventListener("change", function () {
       locationLayer.setVisible(this.checked);
     });
+  }
 
-  document
-    .getElementById("heading-toggle")
-    .addEventListener("change", function () {
+  const headingToggle = document.getElementById("heading-toggle");
+  if (headingToggle) {
+    headingToggle.addEventListener("change", function () {
       headingLayer.setVisible(this.checked);
     });
+  }
 
-  document
-    .getElementById("locate-button")
-    .addEventListener("click", showUserLocation);
+  const locateButton = document.getElementById("locate-button");
+  if (locateButton) {
+    locateButton.addEventListener("click", showUserLocation);
+  }
 
-  document
-    .getElementById("heading-button")
-    .addEventListener("click", activateHeading);
+  const headingButton = document.getElementById("heading-button");
+  if (headingButton) {
+    headingButton.addEventListener("click", activateHeading);
+  }
 
-  document
-    .getElementById("route-profile")
-    .addEventListener("change", function () {
+  const routeProfile = document.getElementById("route-profile");
+  if (routeProfile) {
+    routeProfile.addEventListener("change", function () {
       if (selectedPoiFeature) {
         calculateRouteToPoi(selectedPoiFeature);
       }
     });
+  }
 
-  document
-    .getElementById("clear-route-button")
-    .addEventListener("click", function () {
-      routeSource.clear();
+  const clearRouteButton = document.getElementById("clear-route-button");
+  if (clearRouteButton) {
+    clearRouteButton.addEventListener("click", function () {
+      if (routeSource) {
+        routeSource.clear();
+      }
+
       selectedPoiFeature = null;
 
-      document.getElementById("route-text").textContent =
-        "Wähle einen POI auf der Karte aus, um eine Route zu berechnen.";
+      const routeText = document.getElementById("route-text");
+      if (routeText) {
+        routeText.textContent =
+          "Wähle einen POI auf der Karte aus, um eine Route zu berechnen.";
+      }
     });
+  }
 }
 
 function updateMapLocation(lon, lat, accuracy) {
@@ -753,12 +809,16 @@ function showUserLocation() {
         duration: 700
       });
 
-      popupContent.innerHTML = `
-        <h3>Mein Standort</h3>
-        <p>Genauigkeit: ca. ${Math.round(location.accuracy)} Meter</p>
-      `;
+      if (popupContent) {
+        popupContent.innerHTML = `
+          <h3>Mein Standort</h3>
+          <p>Genauigkeit: ca. ${Math.round(location.accuracy)} Meter</p>
+        `;
+      }
 
-      popupOverlay.setPosition(location.coords);
+      if (popupOverlay) {
+        popupOverlay.setPosition(location.coords);
+      }
     })
     .catch(function (error) {
       alert(error.message);
@@ -889,7 +949,10 @@ async function calculateRouteToPoi(poiFeature) {
 
   try {
     selectedPoiFeature = poiFeature;
-    routeText.textContent = "Route wird berechnet ...";
+
+    if (routeText) {
+      routeText.textContent = "Route wird berechnet ...";
+    }
 
     if (!currentUserLonLat) {
       await getUserLocation();
@@ -902,7 +965,8 @@ async function calculateRouteToPoi(poiFeature) {
     const endLat = poiFeature.get("lat");
     const poiName = poiFeature.get("name");
 
-    const selectedProfile = document.getElementById("route-profile").value;
+    const routeProfile = document.getElementById("route-profile");
+    const selectedProfile = routeProfile ? routeProfile.value : "foot";
 
     const profileConfig = {
       car: {
@@ -922,7 +986,7 @@ async function calculateRouteToPoi(poiFeature) {
       }
     };
 
-    const profile = profileConfig[selectedProfile];
+    const profile = profileConfig[selectedProfile] || profileConfig.foot;
 
     const osrmUrl =
       `https://routing.openstreetmap.de/${profile.serverPath}/route/v1/${profile.apiProfile}/` +
@@ -952,15 +1016,19 @@ async function calculateRouteToPoi(poiFeature) {
       type: "route"
     });
 
-    routeSource.clear();
-    routeSource.addFeature(routeFeature);
+    if (routeSource) {
+      routeSource.clear();
+      routeSource.addFeature(routeFeature);
+    }
 
-    routeText.innerHTML = `
-      Verkehrsmittel: ${profile.label}<br>
-      Ziel: ${poiName}<br>
-      Entfernung: ${formatDistance(route.distance)}<br>
-      Dauer: ca. ${formatDuration(route.duration)}
-    `;
+    if (routeText) {
+      routeText.innerHTML = `
+        Verkehrsmittel: ${profile.label}<br>
+        Ziel: ${poiName}<br>
+        Entfernung: ${formatDistance(route.distance)}<br>
+        Dauer: ca. ${formatDuration(route.duration)}
+      `;
+    }
 
     if (map) {
       map.getView().fit(routeFeature.getGeometry().getExtent(), {
@@ -970,7 +1038,9 @@ async function calculateRouteToPoi(poiFeature) {
       });
     }
   } catch (error) {
-    routeText.textContent = error.message;
+    if (routeText) {
+      routeText.textContent = error.message;
+    }
   }
 }
 
@@ -978,8 +1048,14 @@ function switchView(mode) {
   const isMapMode = mode === "map";
 
   document.body.classList.toggle("map-mode", isMapMode);
-  arViewButton.classList.toggle("active", !isMapMode);
-  mapViewButton.classList.toggle("active", isMapMode);
+
+  if (arViewButton) {
+    arViewButton.classList.toggle("active", !isMapMode);
+  }
+
+  if (mapViewButton) {
+    mapViewButton.classList.toggle("active", isMapMode);
+  }
 
   if (isMapMode) {
     initializeMap();
@@ -994,34 +1070,63 @@ function switchView(mode) {
   }
 }
 
-arViewButton.addEventListener("click", function () {
-  switchView("ar");
-});
+function startGeolocationWatch() {
+  setStatus("Prüfe Standort-Unterstützung …");
 
-mapViewButton.addEventListener("click", function () {
-  switchView("map");
-});
+  if ("geolocation" in navigator) {
+    setStatus("Standort wird angefragt …");
 
-cameraStartButton.addEventListener("click", function () {
-  startAFrameCamera();
-});
-
-renderPois();
-
-startAFrameCamera();
-
-if ("geolocation" in navigator) {
-  navigator.geolocation.watchPosition(updatePoiDistances, handleGeoError, {
-    enableHighAccuracy: true,
-    maximumAge: 1000,
-    timeout: 15000
-  });
-} else {
-  statusEl.textContent = "Dieses Gerät unterstützt keine Geolocation API.";
+    navigator.geolocation.watchPosition(updatePoiDistances, handleGeoError, {
+      enableHighAccuracy: true,
+      maximumAge: 1000,
+      timeout: 15000
+    });
+  } else {
+    setStatus("Dieses Gerät unterstützt keine Geolocation API.");
+  }
 }
 
-window.addEventListener("resize", function () {
-  if (mapInitialized && map) {
-    map.updateSize();
+function initializeApp() {
+  scene = document.querySelector("#ar-scene");
+  cameraVideo = document.querySelector("#camera-video");
+  cameraRig = document.querySelector("#cameraRig");
+
+  statusEl = document.querySelector("#status");
+  poiListEl = document.querySelector("#poiList");
+
+  arViewButton = document.querySelector("#arViewButton");
+  mapViewButton = document.querySelector("#mapViewButton");
+  cameraStartButton = document.querySelector("#cameraStartButton");
+
+  registerFaceCameraComponent();
+
+  if (arViewButton) {
+    arViewButton.addEventListener("click", function () {
+      switchView("ar");
+    });
   }
-});
+
+  if (mapViewButton) {
+    mapViewButton.addEventListener("click", function () {
+      switchView("map");
+    });
+  }
+
+  if (cameraStartButton) {
+    cameraStartButton.addEventListener("click", function () {
+      startAFrameCamera();
+    });
+  }
+
+  renderPois();
+  startAFrameCamera();
+  startGeolocationWatch();
+
+  window.addEventListener("resize", function () {
+    if (mapInitialized && map) {
+      map.updateSize();
+    }
+  });
+}
+
+window.addEventListener("load", initializeApp);
