@@ -33,7 +33,7 @@
       width: 100vw;
       height: 100vh;
       object-fit: cover;
-      z-index: 0;
+      z-index: 1;
       background: #000;
       display: block;
     }
@@ -45,8 +45,9 @@
     }
 
     #ar-scene {
-      z-index: 1;
+      z-index: 2;
       background: transparent !important;
+      pointer-events: none;
     }
 
     #ar-scene canvas,
@@ -59,8 +60,18 @@
       display: none !important;
     }
 
+    .a-loader-title,
+    .a-loader,
+    .a-loading-screen,
+    .a-loading-screen * {
+      display: none !important;
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+
     #map-view {
-      z-index: 2;
+      z-index: 10;
       display: none;
       background: #f3f4f6;
     }
@@ -102,6 +113,7 @@
       font-weight: 700;
       cursor: pointer;
       font: inherit;
+      pointer-events: auto;
     }
 
     #view-switch button.active {
@@ -404,6 +416,7 @@
     id="ar-scene"
     embedded
     vr-mode-ui="enabled: false"
+    loading-screen="enabled: false"
     renderer="alpha: true; antialias: true; colorManagement: true"
     background="transparent: true"
   >
@@ -417,6 +430,6 @@
     </a-entity>
   </a-scene>
 
-  <script src="./app.js?v=12"></script>
+  <script src="./app.js?v=13"></script>
 </body>
 </html>
