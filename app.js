@@ -5,10 +5,9 @@
 // Blickrichtung: DeviceOrientation API
 // 2D-Karte: OpenLayers
 //
-// Debug-Version:
-// Es wird zusätzlich ein großer Test-Marker direkt vor der Kamera angezeigt.
-// Wenn dieser Marker sichtbar ist, rendert A-Frame korrekt.
-// Danach können echte POI-Positionen weiter angepasst werden.
+// Wichtig:
+// Die POIs werden jetzt direkt in das cameraRig eingefügt.
+// Dadurch liegen sie sicher in derselben A-Frame-Ebene wie die Kamera.
 
 const POIS = [
   {
@@ -92,6 +91,8 @@ let osmLayer = null;
 let satelliteLayer = null;
 let topoLayer = null;
 
+let aFrameContentCreated = false;
+
 const MAX_VISIBLE_DISTANCE = 3000;
 
 const toRad = value => value * Math.PI / 180;
@@ -108,6 +109,10 @@ function normalizeDegrees(degrees) {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function getAFrameParent() {
+  return cameraRig || scene;
 }
 
 function registerFaceCameraComponent() {
@@ -206,12 +211,12 @@ function getAFramePositionForPoi(userLat, userLon, poi, visibleIndex) {
     poi.longitude
   );
 
-  const visualDistance = Math.min(Math.max(realDistance * 0.06, 8), 24);
+  const visualDistance = Math.min(Math.max(realDistance * 0.06, 8), 22);
 
   if (currentHeading === null) {
     return {
       x: -5 + visibleIndex * 5,
-      y: -1.4 + visibleIndex * 0.7,
+      y: -1.2 + visibleIndex * 0.7,
       z: -14
     };
   }
@@ -219,13 +224,12 @@ function getAFramePositionForPoi(userLat, userLon, poi, visibleIndex) {
   const bearing = calculateBearing(userLat, userLon, poi.latitude, poi.longitude);
   const relativeAngle = normalizeDegrees(bearing - currentHeading);
 
-  // Für den Test werden POIs bewusst in den sichtbaren Bereich geklemmt.
   const visibleAngle = clamp(relativeAngle, -35, 35);
   const angleRad = toRad(visibleAngle);
 
   return {
     x: Math.sin(angleRad) * visualDistance,
-    y: -1.4 + visibleIndex * 0.8,
+    y: -1.2 + visibleIndex * 0.8,
     z: -Math.cos(angleRad) * visualDistance
   };
 }
@@ -315,13 +319,15 @@ async function startAFrameCamera() {
 }
 
 function createDebugMarker() {
-  if (!scene) {
+  const parent = getAFrameParent();
+
+  if (!parent || document.querySelector("#debug-marker")) {
     return;
   }
 
   const debugRoot = document.createElement("a-entity");
   debugRoot.setAttribute("id", "debug-marker");
-  debugRoot.setAttribute("position", "0 -1.2 -10");
+  debugRoot.setAttribute("position", "0 -1.2 -8");
   debugRoot.setAttribute("visible", "true");
 
   const box = document.createElement("a-box");
@@ -329,7 +335,7 @@ function createDebugMarker() {
   box.setAttribute("width", "2.8");
   box.setAttribute("height", "2.8");
   box.setAttribute("depth", "0.4");
-  box.setAttribute("material", "color: yellow; opacity: 0.95");
+  box.setAttribute("material", "shader: flat; color: yellow; opacity: 0.95; depthTest: false");
 
   const text = document.createElement("a-text");
   text.setAttribute("value", "A-FRAME TEST");
@@ -338,18 +344,24 @@ function createDebugMarker() {
   text.setAttribute("baseline", "center");
   text.setAttribute("position", "0 3.2 0.1");
   text.setAttribute("scale", "2.2 2.2 2.2");
-  text.setAttribute("material", "color: black");
+  text.setAttribute("material", "shader: flat; color: black; depthTest: false");
   text.setAttribute("face-camera-y", "");
 
   debugRoot.appendChild(box);
   debugRoot.appendChild(text);
 
-  scene.appendChild(debugRoot);
+  parent.appendChild(debugRoot);
 }
 
 function createPoiMarker(poi) {
-  if (!scene) {
-    console.error("A-Frame-Szene wurde nicht gefunden.");
+  const parent = getAFrameParent();
+
+  if (!parent) {
+    console.error("A-Frame-Parent wurde nicht gefunden.");
+    return;
+  }
+
+  if (document.querySelector(`#${poi.id}`)) {
     return;
   }
 
@@ -362,7 +374,7 @@ function createPoiMarker(poi) {
   const pinHead = document.createElement("a-sphere");
   pinHead.setAttribute("radius", "1.6");
   pinHead.setAttribute("position", "0 2.8 0");
-  pinHead.setAttribute("material", `color: ${poi.color}; opacity: 1`);
+  pinHead.setAttribute("material", `shader: flat; color: ${poi.color}; opacity: 1; depthTest: false`);
 
   const pinTip = document.createElement("a-cone");
   pinTip.setAttribute("radius-bottom", "1.05");
@@ -370,7 +382,7 @@ function createPoiMarker(poi) {
   pinTip.setAttribute("height", "2.4");
   pinTip.setAttribute("position", "0 1.1 0");
   pinTip.setAttribute("rotation", "180 0 0");
-  pinTip.setAttribute("material", `color: ${poi.color}; opacity: 1`);
+  pinTip.setAttribute("material", `shader: flat; color: ${poi.color}; opacity: 1; depthTest: false`);
 
   const labelBackground = document.createElement("a-plane");
   labelBackground.setAttribute("position", "0 5.2 -0.05");
@@ -378,7 +390,7 @@ function createPoiMarker(poi) {
   labelBackground.setAttribute("height", "2.8");
   labelBackground.setAttribute(
     "material",
-    "color: black; opacity: 0.75; transparent: true; side: double"
+    "shader: flat; color: black; opacity: 0.75; transparent: true; side: double; depthTest: false"
   );
   labelBackground.setAttribute("face-camera-y", "");
 
@@ -391,7 +403,7 @@ function createPoiMarker(poi) {
   label.setAttribute("face-camera-y", "");
   label.setAttribute("scale", "2.1 2.1 2.1");
   label.setAttribute("position", "0 5.2 0");
-  label.setAttribute("material", "color: white");
+  label.setAttribute("material", "shader: flat; color: white; depthTest: false");
 
   pinHead.setAttribute(
     "animation",
@@ -403,12 +415,33 @@ function createPoiMarker(poi) {
   markerRoot.appendChild(labelBackground);
   markerRoot.appendChild(label);
 
-  scene.appendChild(markerRoot);
+  parent.appendChild(markerRoot);
 }
 
 function renderPois() {
+  if (aFrameContentCreated) {
+    return;
+  }
+
   createDebugMarker();
   POIS.forEach(createPoiMarker);
+
+  aFrameContentCreated = true;
+}
+
+function initializeAFrameContent() {
+  if (!scene) {
+    return;
+  }
+
+  if (scene.hasLoaded) {
+    renderPois();
+    return;
+  }
+
+  scene.addEventListener("loaded", function () {
+    renderPois();
+  });
 }
 
 function updatePoiDistances(position) {
@@ -1219,6 +1252,7 @@ function initializeApp() {
   cameraStartButton = document.querySelector("#cameraStartButton");
 
   registerFaceCameraComponent();
+  initializeAFrameContent();
 
   if (arViewButton) {
     arViewButton.addEventListener("click", function () {
@@ -1239,8 +1273,6 @@ function initializeApp() {
       startCameraAndLocation();
     });
   }
-
-  renderPois();
 
   setStatus("Tippe auf „Kamera und Standort starten“.");
 }
