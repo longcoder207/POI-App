@@ -5,10 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
   <title>A-Frame POI-App mit 2D-Karte</title>
 
-  <!-- Nur A-Frame, kein AR.js -->
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
 
-  <!-- OpenLayers für die alternative 2D-Karte -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@10.9.0/ol.css" />
   <script src="https://cdn.jsdelivr.net/npm/ol@10.9.0/dist/ol.js"></script>
 
@@ -52,7 +50,13 @@
 
     #ar-scene canvas,
     .a-canvas {
+      position: fixed !important;
+      inset: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      z-index: 2 !important;
       background: transparent !important;
+      pointer-events: none !important;
     }
 
     .a-enter-vr,
@@ -420,6 +424,8 @@
     renderer="alpha: true; antialias: true; colorManagement: true"
     background="transparent: true"
   >
+    <a-entity light="type: ambient; intensity: 1.2"></a-entity>
+
     <a-entity id="cameraRig" rotation="0 0 0">
       <a-camera
         id="aframeCamera"
@@ -432,6 +438,6 @@
     </a-entity>
   </a-scene>
 
-  <script src="./app.js?v=17"></script>
+  <script src="./app.js?v=18"></script>
 </body>
 </html>
