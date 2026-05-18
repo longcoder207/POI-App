@@ -30,11 +30,12 @@
     #camera-video {
       position: fixed;
       inset: 0;
-      width: 100%;
-      height: 100%;
+      width: 100vw;
+      height: 100vh;
       object-fit: cover;
       z-index: 0;
       background: #000;
+      display: block;
     }
 
     #ar-scene,
@@ -45,7 +46,17 @@
 
     #ar-scene {
       z-index: 1;
-      background: transparent;
+      background: transparent !important;
+    }
+
+    #ar-scene canvas,
+    .a-canvas {
+      background: transparent !important;
+    }
+
+    .a-enter-vr,
+    .a-enter-ar {
+      display: none !important;
     }
 
     #map-view {
@@ -307,9 +318,6 @@
 </head>
 
 <body>
-  <div style="position:fixed;top:0;left:0;z-index:999999;background:red;color:white;padding:12px;font-size:24px;">
-  TEST VERSION 20
-</div>
   <video id="camera-video" autoplay playsinline muted></video>
 
   <div id="view-switch" aria-label="Ansicht wechseln">
@@ -396,7 +404,7 @@
     id="ar-scene"
     embedded
     vr-mode-ui="enabled: false"
-    renderer="antialias: true; alpha: true"
+    renderer="alpha: true; antialias: true; colorManagement: true"
     background="transparent: true"
   >
     <a-entity id="cameraRig" rotation="0 0 0">
@@ -409,6 +417,6 @@
     </a-entity>
   </a-scene>
 
-  <script src="./app.js?v=11"></script>
+  <script src="./app.js?v=12"></script>
 </body>
 </html>
