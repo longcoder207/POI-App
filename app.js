@@ -1,7 +1,8 @@
 // Beispiel-POIs: Ersetze diese Koordinaten durch deine echten POIs.
 // Diese Version nutzt A-Frame ohne AR.js.
 // Kamera: getUserMedia()
-// POI-Positionierung: GPS relativ zur aktuellen Position
+// Standort: Geolocation API
+// Blickrichtung: DeviceOrientation API
 // 2D-Karte: OpenLayers
 
 const POIS = [
@@ -67,7 +68,6 @@ let currentHeading = null;
 let cameraStreamStarted = false;
 let orientationStarted = false;
 let geoWatchId = null;
-let geoStarted = false;
 
 let map = null;
 let selectedPoiFeature = null;
@@ -85,6 +85,8 @@ let headingLayer = null;
 let osmLayer = null;
 let satelliteLayer = null;
 let topoLayer = null;
+
+const MAX_VISIBLE_DISTANCE = 3000;
 
 const toRad = value => value * Math.PI / 180;
 
@@ -166,12 +168,10 @@ function formatDuration(seconds) {
   return `${hours} Std. ${restMinutes} Min.`;
 }
 
-function gpsToAFramePosition(userLat, userLon, poiLat, poiLon) {
-  const dLat = toRad(poiLat - userLat);
-  const dLon = toRad(poiLon - userLon);
-
+function calculateBearing(userLat, userLon, poiLat, poiLon) {
   const lat1 = toRad(userLat);
   const lat2 = toRad(poiLat);
+  const dLon = toRad(poiLon - userLon);
 
   const y = Math.sin(dLon) * Math.cos(lat2);
   const x =
@@ -179,11 +179,20 @@ function gpsToAFramePosition(userLat, userLon, poiLat, poiLon) {
     Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
 
   const bearingRad = Math.atan2(y, x);
+  const bearingDeg = (bearingRad * 180) / Math.PI;
+
+  return (bearingDeg + 360) % 360;
+}
+
+function gpsToAFramePosition(userLat, userLon, poiLat, poiLon) {
+  const bearingDeg = calculateBearing(userLat, userLon, poiLat, poiLon);
+  const bearingRad = toRad(bearingDeg);
+
   const realDistance = distanceInMeters(userLat, userLon, poiLat, poiLon);
 
-  // Für die AR-Ansicht werden reale Entfernungen visuell zusammengedrückt,
-  // damit nahe POIs auf dem Bildschirm sichtbar bleiben.
-  const visualDistance = Math.min(Math.max(realDistance * 0.06, 8), 35);
+  // Reale Entfernung wird für AR sichtbar zusammengedrückt.
+  // Dadurch sind POIs nicht hunderte Meter weit in der 3D-Szene entfernt.
+  const visualDistance = Math.min(Math.max(realDistance * 0.06, 10), 40);
 
   return {
     x: Math.sin(bearingRad) * visualDistance,
@@ -209,9 +218,7 @@ function updateAFramePoiPositions(latitude, longitude) {
       poi.longitude
     );
 
-    const maxVisibleDistance = 3000;
-
-    if (distance > maxVisibleDistance) {
+    if (distance > MAX_VISIBLE_DISTANCE) {
       marker.setAttribute("visible", "false");
       marker.setAttribute("position", "0 -9999 0");
       return;
@@ -235,6 +242,8 @@ function updateAFramePoiPositions(latitude, longitude) {
 
     visiblePoiCount++;
   });
+
+  return visiblePoiCount;
 }
 
 async function startAFrameCamera() {
@@ -268,7 +277,7 @@ async function startAFrameCamera() {
     }
 
     cameraStreamStarted = true;
-    setStatus("Kamera aktiv. Standort wird angefragt …");
+    setStatus("Kamera aktiv. Standort und Blickrichtung werden angefragt …");
 
     return true;
   } catch (error) {
@@ -346,9 +355,7 @@ function updatePoiDistances(position) {
 
   currentUserLonLat = [longitude, latitude];
 
-  updateAFramePoiPositions(latitude, longitude);
-
-  setStatus(`Standort aktiv: ±${Math.round(accuracy)} m Genauigkeit`);
+  const visiblePoiCount = updateAFramePoiPositions(latitude, longitude);
 
   const sortedPois = POIS
     .map(poi => ({
@@ -381,6 +388,15 @@ function updatePoiDistances(position) {
       .join("");
   }
 
+  const headingText =
+    currentHeading === null
+      ? "Blickrichtung fehlt"
+      : `Blickrichtung ${Math.round(currentHeading)}°`;
+
+  setStatus(
+    `Standort aktiv: ±${Math.round(accuracy)} m | POIs sichtbar: ${visiblePoiCount} | ${headingText}`
+  );
+
   updateMapLocation(longitude, latitude, accuracy);
 }
 
@@ -390,7 +406,7 @@ function handleGeoError(error) {
   const messages = {
     1: "Standortzugriff wurde abgelehnt. Bitte in Safari den Standort erlauben.",
     2: "Standort konnte nicht bestimmt werden. Bitte Ortungsdienste prüfen und möglichst nach draußen gehen.",
-    3: "Standortabfrage hat zu lange gedauert. Tippe erneut auf Kamera starten."
+    3: "Standortabfrage hat zu lange gedauert. Tippe erneut auf Kamera und Standort starten."
   };
 
   setStatus(messages[error.code] || "Unbekannter Standortfehler.");
@@ -417,7 +433,6 @@ function startGeolocationWatch() {
 
   navigator.geolocation.getCurrentPosition(
     function (position) {
-      geoStarted = true;
       updatePoiDistances(position);
 
       if (geoWatchId === null) {
@@ -433,12 +448,88 @@ function startGeolocationWatch() {
   );
 }
 
+function getHeadingFromEvent(event) {
+  if (typeof event.webkitCompassHeading === "number") {
+    return event.webkitCompassHeading;
+  }
+
+  if (typeof event.alpha === "number") {
+    return (360 - event.alpha) % 360;
+  }
+
+  return null;
+}
+
+function updateAFrameCameraHeading(headingDegrees) {
+  if (!cameraRig) {
+    return;
+  }
+
+  // Der Kamera-Rig wird gegen die Kompassrichtung gedreht,
+  // damit die Weltkoordinaten stabil bleiben.
+  cameraRig.setAttribute("rotation", `0 ${-headingDegrees} 0`);
+}
+
+function handleDeviceOrientation(event) {
+  const heading = getHeadingFromEvent(event);
+
+  if (heading === null) {
+    return;
+  }
+
+  currentHeading = heading;
+
+  updateAFrameCameraHeading(heading);
+  updateHeadingCone();
+
+  if (currentUserLonLat) {
+    updateAFramePoiPositions(currentUserLonLat[1], currentUserLonLat[0]);
+  }
+}
+
+async function activateHeading() {
+  try {
+    if (!window.DeviceOrientationEvent) {
+      setStatus("Dieses Gerät unterstützt keine Geräteausrichtung.");
+      return false;
+    }
+
+    if (typeof DeviceOrientationEvent.requestPermission === "function") {
+      const permission = await DeviceOrientationEvent.requestPermission();
+
+      if (permission !== "granted") {
+        setStatus("Blickrichtung wurde nicht erlaubt. POIs können außerhalb des Sichtfelds liegen.");
+        return false;
+      }
+    }
+
+    if (!orientationStarted) {
+      window.addEventListener(
+        "deviceorientationabsolute",
+        handleDeviceOrientation,
+        true
+      );
+      window.addEventListener("deviceorientation", handleDeviceOrientation, true);
+      orientationStarted = true;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Blickrichtung-Fehler:", error);
+    setStatus("Blickrichtung konnte nicht aktiviert werden.");
+    return false;
+  }
+}
+
 async function startCameraAndLocation() {
   const cameraOk = await startAFrameCamera();
 
-  if (cameraOk) {
-    startGeolocationWatch();
+  if (!cameraOk) {
+    return;
   }
+
+  await activateHeading();
+  startGeolocationWatch();
 }
 
 function transformCoords(lon, lat) {
@@ -927,76 +1018,6 @@ function updateHeadingCone() {
       type: "heading"
     })
   );
-}
-
-function getHeadingFromEvent(event) {
-  if (typeof event.webkitCompassHeading === "number") {
-    return event.webkitCompassHeading;
-  }
-
-  if (typeof event.alpha === "number") {
-    return (360 - event.alpha) % 360;
-  }
-
-  return null;
-}
-
-function updateAFrameCameraHeading(headingDegrees) {
-  if (!cameraRig) {
-    return;
-  }
-
-  cameraRig.setAttribute("rotation", `0 ${-headingDegrees} 0`);
-}
-
-function handleDeviceOrientation(event) {
-  const heading = getHeadingFromEvent(event);
-
-  if (heading === null) {
-    return;
-  }
-
-  currentHeading = heading;
-
-  updateAFrameCameraHeading(heading);
-  updateHeadingCone();
-}
-
-async function activateHeading() {
-  try {
-    if (!window.DeviceOrientationEvent) {
-      alert("Dieses Gerät unterstützt keine Geräteausrichtung.");
-      return;
-    }
-
-    if (typeof DeviceOrientationEvent.requestPermission === "function") {
-      const permission = await DeviceOrientationEvent.requestPermission();
-
-      if (permission !== "granted") {
-        alert("Berechtigung für die Blickrichtung wurde nicht erteilt.");
-        return;
-      }
-    }
-
-    if (!orientationStarted) {
-      window.addEventListener(
-        "deviceorientationabsolute",
-        handleDeviceOrientation,
-        true
-      );
-      window.addEventListener("deviceorientation", handleDeviceOrientation, true);
-      orientationStarted = true;
-    }
-
-    if (!currentUserMapCoords && currentUserLonLat) {
-      updateMapLocation(currentUserLonLat[0], currentUserLonLat[1], 0);
-    }
-
-    alert("Blickrichtung wurde aktiviert.");
-  } catch (error) {
-    console.error(error);
-    alert("Blickrichtung konnte nicht aktiviert werden.");
-  }
 }
 
 async function calculateRouteToPoi(poiFeature) {
