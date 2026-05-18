@@ -6,9 +6,8 @@
 // 2D-Karte: OpenLayers
 //
 // Wichtig:
-// Wenn auf dem iPhone keine Blickrichtung erlaubt/geliefert wird,
-// werden sichtbare POIs als Fallback vor der Kamera angezeigt.
-// Sobald die Blickrichtung verfügbar ist, werden sie richtungsbasiert positioniert.
+// A-Frame dreht die Kamera NICHT selbst.
+// Die POIs werden per JS relativ zur iPhone-Blickrichtung auf dem Bildschirm positioniert.
 
 const POIS = [
   {
@@ -102,6 +101,14 @@ function setStatus(message) {
   }
 }
 
+function normalizeDegrees(degrees) {
+  return ((degrees + 540) % 360) - 180;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
 function registerFaceCameraComponent() {
   if (typeof AFRAME === "undefined") {
     console.warn("A-Frame ist noch nicht geladen.");
@@ -190,36 +197,45 @@ function calculateBearing(userLat, userLon, poiLat, poiLon) {
   return (bearingDeg + 360) % 360;
 }
 
-function gpsToAFramePosition(userLat, userLon, poiLat, poiLon) {
-  const bearingDeg = calculateBearing(userLat, userLon, poiLat, poiLon);
-  const bearingRad = toRad(bearingDeg);
-
-  const realDistance = distanceInMeters(userLat, userLon, poiLat, poiLon);
-
-  // Reale Entfernung wird für AR sichtbar zusammengedrückt.
-  // Dadurch sind POIs nicht hunderte Meter weit in der 3D-Szene entfernt.
-  const visualDistance = Math.min(Math.max(realDistance * 0.06, 10), 40);
-
-  return {
-    x: Math.sin(bearingRad) * visualDistance,
-    y: 0,
-    z: -Math.cos(bearingRad) * visualDistance
-  };
-}
-
 function getFallbackAFramePosition(index) {
-  // Fallback ohne Kompass:
-  // POIs werden sichtbar vor der Kamera gestaffelt.
-  // So siehst du sicher, dass die Marker grundsätzlich funktionieren.
   const fallbackPositions = [
-    { x: -8, y: 0, z: -18 },
-    { x: 0, y: 0.8, z: -22 },
-    { x: 8, y: 1.6, z: -18 },
-    { x: -12, y: 2.4, z: -26 },
-    { x: 12, y: 3.2, z: -26 }
+    { x: -6, y: -1.2, z: -18 },
+    { x: 0, y: -0.8, z: -20 },
+    { x: 6, y: -1.2, z: -18 },
+    { x: -10, y: -0.4, z: -24 },
+    { x: 10, y: -0.4, z: -24 }
   ];
 
   return fallbackPositions[index % fallbackPositions.length];
+}
+
+function getAFramePositionForPoi(userLat, userLon, poi, visibleIndex) {
+  const realDistance = distanceInMeters(
+    userLat,
+    userLon,
+    poi.latitude,
+    poi.longitude
+  );
+
+  const visualDistance = Math.min(Math.max(realDistance * 0.06, 12), 32);
+
+  if (currentHeading === null) {
+    return getFallbackAFramePosition(visibleIndex);
+  }
+
+  const bearing = calculateBearing(userLat, userLon, poi.latitude, poi.longitude);
+  const relativeAngle = normalizeDegrees(bearing - currentHeading);
+
+  // Damit du die POIs sicher auf dem Bildschirm siehst,
+  // werden seitliche Winkel auf den sichtbaren Bereich geklemmt.
+  const visibleAngle = clamp(relativeAngle, -55, 55);
+  const angleRad = toRad(visibleAngle);
+
+  return {
+    x: Math.sin(angleRad) * visualDistance,
+    y: -1.2 + visibleIndex * 0.9,
+    z: -Math.cos(angleRad) * visualDistance
+  };
 }
 
 function updateAFramePoiPositions(latitude, longitude) {
@@ -245,20 +261,12 @@ function updateAFramePoiPositions(latitude, longitude) {
       return;
     }
 
-    let position;
-
-    if (currentHeading === null) {
-      position = getFallbackAFramePosition(visiblePoiCount);
-    } else {
-      position = gpsToAFramePosition(
-        latitude,
-        longitude,
-        poi.latitude,
-        poi.longitude
-      );
-
-      position.y = visiblePoiCount * 0.8;
-    }
+    const position = getAFramePositionForPoi(
+      latitude,
+      longitude,
+      poi,
+      visiblePoiCount
+    );
 
     marker.setAttribute(
       "position",
@@ -327,25 +335,25 @@ function createPoiMarker(poi) {
   markerRoot.setAttribute("position", "0 -9999 0");
 
   const pinHead = document.createElement("a-sphere");
-  pinHead.setAttribute("radius", "2.2");
-  pinHead.setAttribute("position", "0 5 0");
-  pinHead.setAttribute("material", `color: ${poi.color}; opacity: 0.95`);
+  pinHead.setAttribute("radius", "1.05");
+  pinHead.setAttribute("position", "0 2.2 0");
+  pinHead.setAttribute("material", `color: ${poi.color}; opacity: 0.98`);
 
   const pinTip = document.createElement("a-cone");
-  pinTip.setAttribute("radius-bottom", "1.4");
+  pinTip.setAttribute("radius-bottom", "0.7");
   pinTip.setAttribute("radius-top", "0");
-  pinTip.setAttribute("height", "4");
-  pinTip.setAttribute("position", "0 2.6 0");
+  pinTip.setAttribute("height", "1.8");
+  pinTip.setAttribute("position", "0 0.9 0");
   pinTip.setAttribute("rotation", "180 0 0");
-  pinTip.setAttribute("material", `color: ${poi.color}; opacity: 0.95`);
+  pinTip.setAttribute("material", `color: ${poi.color}; opacity: 0.98`);
 
   const labelBackground = document.createElement("a-plane");
-  labelBackground.setAttribute("position", "0 9 -0.05");
-  labelBackground.setAttribute("width", "18");
-  labelBackground.setAttribute("height", "4");
+  labelBackground.setAttribute("position", "0 4.1 -0.05");
+  labelBackground.setAttribute("width", "8.5");
+  labelBackground.setAttribute("height", "2.1");
   labelBackground.setAttribute(
     "material",
-    "color: black; opacity: 0.65; transparent: true"
+    "color: black; opacity: 0.72; transparent: true; side: double"
   );
   labelBackground.setAttribute("face-camera-y", "");
 
@@ -356,13 +364,13 @@ function createPoiMarker(poi) {
   label.setAttribute("anchor", "center");
   label.setAttribute("baseline", "center");
   label.setAttribute("face-camera-y", "");
-  label.setAttribute("scale", "4 4 4");
-  label.setAttribute("position", "0 9 0");
+  label.setAttribute("scale", "1.7 1.7 1.7");
+  label.setAttribute("position", "0 4.1 0");
   label.setAttribute("material", "color: white");
 
   pinHead.setAttribute(
     "animation",
-    "property: scale; dir: alternate; dur: 850; loop: true; to: 1.2 1.2 1.2"
+    "property: scale; dir: alternate; dur: 850; loop: true; to: 1.18 1.18 1.18"
   );
 
   markerRoot.appendChild(pinHead);
@@ -487,12 +495,13 @@ function getHeadingFromEvent(event) {
   return null;
 }
 
-function updateAFrameCameraHeading(headingDegrees) {
-  if (!cameraRig) {
-    return;
+function updateAFrameCameraHeading() {
+  // Absichtlich leer:
+  // Die A-Frame-Kamera wird nicht gedreht.
+  // Stattdessen werden POIs relativ zur aktuellen Blickrichtung berechnet.
+  if (cameraRig) {
+    cameraRig.setAttribute("rotation", "0 0 0");
   }
-
-  cameraRig.setAttribute("rotation", `0 ${-headingDegrees} 0`);
 }
 
 function handleDeviceOrientation(event) {
@@ -504,7 +513,7 @@ function handleDeviceOrientation(event) {
 
   currentHeading = heading;
 
-  updateAFrameCameraHeading(heading);
+  updateAFrameCameraHeading();
   updateHeadingCone();
 
   if (currentUserLonLat) {
@@ -549,9 +558,6 @@ async function activateHeading() {
 }
 
 async function startCameraAndLocation() {
-  // Wichtig für iPhone:
-  // Die Blickrichtung wird zuerst im direkten Button-Klick angefragt.
-  // Danach starten Kamera und Standort.
   await activateHeading();
 
   const cameraOk = await startAFrameCamera();
