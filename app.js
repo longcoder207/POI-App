@@ -93,11 +93,11 @@ let topoLayer = null;
 
 let aFrameContentCreated = false;
 
-// POIs werden nur bis zu dieser Entfernung in der A-Frame-Ansicht angezeigt.
 const MAX_VISIBLE_DISTANCE = 3000;
 
-// Orientierungsglättung:
-// 0,1 Radiant entspricht ungefähr 5,73 Grad.
+// 0,1 Radiant entspricht ca. 5,73 Grad.
+// Größerer Wert = weniger empfindlich.
+// Kleinerer Smoothing-Faktor = ruhiger, aber träger.
 const ORIENTATION_STEP_RADIANS = 0.1;
 const ORIENTATION_SMOOTHING_FACTOR = 0.18;
 
@@ -126,18 +126,12 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-function getAFrameParent() {
-  return cameraRig || scene;
-}
-
 function getHarmonizedHeading(rawHeadingDegrees) {
   const rawHeadingRad = normalizeRadiansPositive(toRad(rawHeadingDegrees));
 
   if (smoothedHeadingRad === null) {
     smoothedHeadingRad = rawHeadingRad;
   } else {
-    // Kreisförmige Glättung:
-    // Dadurch gibt es keinen Sprung bei 359° -> 0°.
     const previousX = Math.cos(smoothedHeadingRad);
     const previousY = Math.sin(smoothedHeadingRad);
 
@@ -164,6 +158,10 @@ function getHarmonizedHeading(rawHeadingDegrees) {
     radians: quantizedRad,
     degrees: quantizedDegrees
   };
+}
+
+function getAFrameParent() {
+  return cameraRig || scene;
 }
 
 function registerFaceCameraComponent() {
@@ -219,23 +217,23 @@ function distanceInMeters(lat1, lon1, lat2, lon2) {
 
 function formatDistance(meters) {
   if (meters >= 1000) {
-    return ${(meters / 1000).toFixed(2)} km;
+    return `${(meters / 1000).toFixed(2)} km`;
   }
 
-  return ${Math.round(meters)} m;
+  return `${Math.round(meters)} m`;
 }
 
 function formatDuration(seconds) {
   const minutes = Math.round(seconds / 60);
 
   if (minutes < 60) {
-    return ${minutes} Min.;
+    return `${minutes} Min.`;
   }
 
   const hours = Math.floor(minutes / 60);
   const restMinutes = minutes % 60;
 
-  return ${hours} Std. ${restMinutes} Min.;
+  return `${hours} Std. ${restMinutes} Min.`;
 }
 
 function calculateBearing(userLat, userLon, poiLat, poiLon) {
@@ -289,7 +287,7 @@ function updateAFramePoiPositions(latitude, longitude) {
   let visiblePoiCount = 0;
 
   POIS.forEach(poi => {
-    const marker = document.querySelector(#${poi.id});
+    const marker = document.querySelector(`#${poi.id}`);
 
     if (!marker) {
       return;
@@ -315,11 +313,7 @@ function updateAFramePoiPositions(latitude, longitude) {
       visiblePoiCount
     );
 
-    marker.setAttribute(
-      "position",
-      ${position.x} ${position.y} ${position.z}
-    );
-
+    marker.setAttribute("position", `${position.x} ${position.y} ${position.z}`);
     marker.setAttribute("visible", "true");
 
     visiblePoiCount++;
@@ -377,7 +371,7 @@ function createPoiMarker(poi) {
     return;
   }
 
-  if (document.querySelector(#${poi.id})) {
+  if (document.querySelector(`#${poi.id}`)) {
     return;
   }
 
@@ -390,7 +384,7 @@ function createPoiMarker(poi) {
   const pinHead = document.createElement("a-sphere");
   pinHead.setAttribute("radius", "1.6");
   pinHead.setAttribute("position", "0 2.8 0");
-  pinHead.setAttribute("material", shader: flat; color: ${poi.color}; opacity: 1; depthTest: false);
+  pinHead.setAttribute("material", `shader: flat; color: ${poi.color}; opacity: 1; depthTest: false`);
 
   const pinTip = document.createElement("a-cone");
   pinTip.setAttribute("radius-bottom", "1.05");
@@ -398,7 +392,7 @@ function createPoiMarker(poi) {
   pinTip.setAttribute("height", "2.4");
   pinTip.setAttribute("position", "0 1.1 0");
   pinTip.setAttribute("rotation", "180 0 0");
-  pinTip.setAttribute("material", shader: flat; color: ${poi.color}; opacity: 1; depthTest: false);
+  pinTip.setAttribute("material", `shader: flat; color: ${poi.color}; opacity: 1; depthTest: false`);
 
   const labelBackground = document.createElement("a-plane");
   labelBackground.setAttribute("position", "0 5.2 -0.05");
@@ -411,7 +405,7 @@ function createPoiMarker(poi) {
   labelBackground.setAttribute("face-camera-y", "");
 
   const label = document.createElement("a-text");
-  label.setAttribute("id", ${poi.id}-label);
+  label.setAttribute("id", `${poi.id}-label`);
   label.setAttribute("value", poi.name);
   label.setAttribute("align", "center");
   label.setAttribute("anchor", "center");
@@ -478,10 +472,10 @@ function updatePoiDistances(position) {
     .sort((a, b) => a.distance - b.distance);
 
   sortedPois.forEach(poi => {
-    const label = document.querySelector(#${poi.id}-label);
+    const label = document.querySelector(`#${poi.id}-label`);
 
     if (label) {
-      label.setAttribute("value", ${poi.name}\n${Math.round(poi.distance)} m);
+      label.setAttribute("value", `${poi.name}\n${Math.round(poi.distance)} m`);
     }
   });
 
@@ -499,10 +493,10 @@ function updatePoiDistances(position) {
   const headingText =
     currentHeading === null
       ? "Blickrichtung fehlt, Fallback aktiv"
-      : Blickrichtung ${Math.round(currentHeading)}°;
+      : `Blickrichtung ${Math.round(currentHeading)}°`;
 
   setStatus(
-    Standort aktiv: ±${Math.round(accuracy)} m | POIs sichtbar: ${visiblePoiCount} | ${headingText}
+    `Standort aktiv: ±${Math.round(accuracy)} m | POIs sichtbar: ${visiblePoiCount} | ${headingText}`
   );
 
   updateMapLocation(longitude, latitude, accuracy);
@@ -583,8 +577,6 @@ function handleDeviceOrientation(event) {
 
   const harmonizedHeading = getHarmonizedHeading(rawHeading);
 
-  // POIs werden nur neu berechnet, wenn sich die harmonisierte Blickrichtung
-  // um mindestens einen 0,1-Radiant-Schritt geändert hat.
   if (lastHeadingBucket === harmonizedHeading.bucket) {
     return;
   }
@@ -637,6 +629,8 @@ async function activateHeading() {
 }
 
 async function startCameraAndLocation() {
+  setStatus("Starte Kamera, Standort und Orientierung …");
+
   await activateHeading();
 
   const cameraOk = await startAFrameCamera();
@@ -1000,7 +994,7 @@ function updateMapLocation(lon, lat, accuracy) {
   const locationFeature = new ol.Feature({
     geometry: new ol.geom.Point(userCoords),
     name: "Mein Standort",
-    description: Genauigkeit: ca. ${Math.round(accuracy || 0)} Meter,
+    description: `Genauigkeit: ca. ${Math.round(accuracy || 0)} Meter`,
     type: "location"
   });
 
@@ -1039,8 +1033,7 @@ function getUserLocation() {
         let message = "Dein Standort konnte nicht ermittelt werden.";
 
         if (error.code === error.PERMISSION_DENIED) {
-          message =
-            "Standortzugriff wurde verweigert. Bitte im Browser erlauben.";
+          message = "Standortzugriff wurde verweigert. Bitte im Browser erlauben.";
         } else if (error.code === error.POSITION_UNAVAILABLE) {
           message = "Standortinformationen sind aktuell nicht verfügbar.";
         } else if (error.code === error.TIMEOUT) {
@@ -1181,9 +1174,9 @@ async function calculateRouteToPoi(poiFeature) {
     const profile = profileConfig[selectedProfile] || profileConfig.foot;
 
     const osrmUrl =
-      https://routing.openstreetmap.de/${profile.serverPath}/route/v1/${profile.apiProfile}/ +
-      ${startLon},${startLat};${endLon},${endLat} +
-      ?overview=full&geometries=geojson&steps=false;
+      `https://routing.openstreetmap.de/${profile.serverPath}/route/v1/${profile.apiProfile}/` +
+      `${startLon},${startLat};${endLon},${endLat}` +
+      `?overview=full&geometries=geojson&steps=false`;
 
     const response = await fetch(osrmUrl);
 
