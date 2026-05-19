@@ -4,10 +4,6 @@
 // Standort: Geolocation API
 // Blickrichtung: DeviceOrientation API
 // 2D-Karte: OpenLayers
-//
-// Wichtig:
-// Die POIs werden jetzt direkt in das cameraRig eingefügt.
-// Dadurch liegen sie sicher in derselben A-Frame-Ebene wie die Kamera.
 
 const POIS = [
   {
@@ -318,41 +314,6 @@ async function startAFrameCamera() {
   }
 }
 
-function createDebugMarker() {
-  const parent = getAFrameParent();
-
-  if (!parent || document.querySelector("#debug-marker")) {
-    return;
-  }
-
-  const debugRoot = document.createElement("a-entity");
-  debugRoot.setAttribute("id", "debug-marker");
-  debugRoot.setAttribute("position", "0 -1.2 -8");
-  debugRoot.setAttribute("visible", "true");
-
-  const box = document.createElement("a-box");
-  box.setAttribute("position", "0 1.2 0");
-  box.setAttribute("width", "2.8");
-  box.setAttribute("height", "2.8");
-  box.setAttribute("depth", "0.4");
-  box.setAttribute("material", "shader: flat; color: yellow; opacity: 0.95; depthTest: false");
-
-  const text = document.createElement("a-text");
-  text.setAttribute("value", "A-FRAME TEST");
-  text.setAttribute("align", "center");
-  text.setAttribute("anchor", "center");
-  text.setAttribute("baseline", "center");
-  text.setAttribute("position", "0 3.2 0.1");
-  text.setAttribute("scale", "2.2 2.2 2.2");
-  text.setAttribute("material", "shader: flat; color: black; depthTest: false");
-  text.setAttribute("face-camera-y", "");
-
-  debugRoot.appendChild(box);
-  debugRoot.appendChild(text);
-
-  parent.appendChild(debugRoot);
-}
-
 function createPoiMarker(poi) {
   const parent = getAFrameParent();
 
@@ -423,9 +384,7 @@ function renderPois() {
     return;
   }
 
-  createDebugMarker();
   POIS.forEach(createPoiMarker);
-
   aFrameContentCreated = true;
 }
 
