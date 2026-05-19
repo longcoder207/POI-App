@@ -4,6 +4,10 @@
 // Standort: Geolocation API
 // Blickrichtung: DeviceOrientation API
 // 2D-Karte: OpenLayers
+//
+// Orientierung:
+// Die Blickrichtung wird geglättet und nur in Schritten von 0,1 Radiant aktualisiert.
+// Dadurch flackern die POIs weniger bei kleinen Sensorbewegungen.
 
 const POIS = [
   {
@@ -89,9 +93,19 @@ let topoLayer = null;
 
 let aFrameContentCreated = false;
 
+// POIs werden nur bis zu dieser Entfernung in der A-Frame-Ansicht angezeigt.
 const MAX_VISIBLE_DISTANCE = 3000;
 
+// Orientierungsglättung:
+// 0,1 Radiant entspricht ungefähr 5,73 Grad.
+const ORIENTATION_STEP_RADIANS = 0.1;
+const ORIENTATION_SMOOTHING_FACTOR = 0.18;
+
+let smoothedHeadingRad = null;
+let lastHeadingBucket = null;
+
 const toRad = value => value * Math.PI / 180;
+const toDeg = value => value * 180 / Math.PI;
 
 function setStatus(message) {
   if (statusEl) {
@@ -103,12 +117,53 @@ function normalizeDegrees(degrees) {
   return ((degrees + 540) % 360) - 180;
 }
 
+function normalizeRadiansPositive(radians) {
+  const fullCircle = Math.PI * 2;
+  return ((radians % fullCircle) + fullCircle) % fullCircle;
+}
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
 function getAFrameParent() {
   return cameraRig || scene;
+}
+
+function getHarmonizedHeading(rawHeadingDegrees) {
+  const rawHeadingRad = normalizeRadiansPositive(toRad(rawHeadingDegrees));
+
+  if (smoothedHeadingRad === null) {
+    smoothedHeadingRad = rawHeadingRad;
+  } else {
+    // Kreisförmige Glättung:
+    // Dadurch gibt es keinen Sprung bei 359° -> 0°.
+    const previousX = Math.cos(smoothedHeadingRad);
+    const previousY = Math.sin(smoothedHeadingRad);
+
+    const rawX = Math.cos(rawHeadingRad);
+    const rawY = Math.sin(rawHeadingRad);
+
+    const mixedX =
+      previousX * (1 - ORIENTATION_SMOOTHING_FACTOR) +
+      rawX * ORIENTATION_SMOOTHING_FACTOR;
+
+    const mixedY =
+      previousY * (1 - ORIENTATION_SMOOTHING_FACTOR) +
+      rawY * ORIENTATION_SMOOTHING_FACTOR;
+
+    smoothedHeadingRad = normalizeRadiansPositive(Math.atan2(mixedY, mixedX));
+  }
+
+  const bucket = Math.round(smoothedHeadingRad / ORIENTATION_STEP_RADIANS);
+  const quantizedRad = normalizeRadiansPositive(bucket * ORIENTATION_STEP_RADIANS);
+  const quantizedDegrees = (toDeg(quantizedRad) + 360) % 360;
+
+  return {
+    bucket,
+    radians: quantizedRad,
+    degrees: quantizedDegrees
+  };
 }
 
 function registerFaceCameraComponent() {
@@ -164,23 +219,23 @@ function distanceInMeters(lat1, lon1, lat2, lon2) {
 
 function formatDistance(meters) {
   if (meters >= 1000) {
-    return `${(meters / 1000).toFixed(2)} km`;
+    return ${(meters / 1000).toFixed(2)} km;
   }
 
-  return `${Math.round(meters)} m`;
+  return ${Math.round(meters)} m;
 }
 
 function formatDuration(seconds) {
   const minutes = Math.round(seconds / 60);
 
   if (minutes < 60) {
-    return `${minutes} Min.`;
+    return ${minutes} Min.;
   }
 
   const hours = Math.floor(minutes / 60);
   const restMinutes = minutes % 60;
 
-  return `${hours} Std. ${restMinutes} Min.`;
+  return ${hours} Std. ${restMinutes} Min.;
 }
 
 function calculateBearing(userLat, userLon, poiLat, poiLon) {
@@ -194,7 +249,7 @@ function calculateBearing(userLat, userLon, poiLat, poiLon) {
     Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
 
   const bearingRad = Math.atan2(y, x);
-  const bearingDeg = (bearingRad * 180) / Math.PI;
+  const bearingDeg = toDeg(bearingRad);
 
   return (bearingDeg + 360) % 360;
 }
@@ -234,7 +289,7 @@ function updateAFramePoiPositions(latitude, longitude) {
   let visiblePoiCount = 0;
 
   POIS.forEach(poi => {
-    const marker = document.querySelector(`#${poi.id}`);
+    const marker = document.querySelector(#${poi.id});
 
     if (!marker) {
       return;
@@ -262,7 +317,7 @@ function updateAFramePoiPositions(latitude, longitude) {
 
     marker.setAttribute(
       "position",
-      `${position.x} ${position.y} ${position.z}`
+      ${position.x} ${position.y} ${position.z}
     );
 
     marker.setAttribute("visible", "true");
@@ -322,7 +377,7 @@ function createPoiMarker(poi) {
     return;
   }
 
-  if (document.querySelector(`#${poi.id}`)) {
+  if (document.querySelector(#${poi.id})) {
     return;
   }
 
@@ -335,7 +390,7 @@ function createPoiMarker(poi) {
   const pinHead = document.createElement("a-sphere");
   pinHead.setAttribute("radius", "1.6");
   pinHead.setAttribute("position", "0 2.8 0");
-  pinHead.setAttribute("material", `shader: flat; color: ${poi.color}; opacity: 1; depthTest: false`);
+  pinHead.setAttribute("material", shader: flat; color: ${poi.color}; opacity: 1; depthTest: false);
 
   const pinTip = document.createElement("a-cone");
   pinTip.setAttribute("radius-bottom", "1.05");
@@ -343,7 +398,7 @@ function createPoiMarker(poi) {
   pinTip.setAttribute("height", "2.4");
   pinTip.setAttribute("position", "0 1.1 0");
   pinTip.setAttribute("rotation", "180 0 0");
-  pinTip.setAttribute("material", `shader: flat; color: ${poi.color}; opacity: 1; depthTest: false`);
+  pinTip.setAttribute("material", shader: flat; color: ${poi.color}; opacity: 1; depthTest: false);
 
   const labelBackground = document.createElement("a-plane");
   labelBackground.setAttribute("position", "0 5.2 -0.05");
@@ -356,7 +411,7 @@ function createPoiMarker(poi) {
   labelBackground.setAttribute("face-camera-y", "");
 
   const label = document.createElement("a-text");
-  label.setAttribute("id", `${poi.id}-label`);
+  label.setAttribute("id", ${poi.id}-label);
   label.setAttribute("value", poi.name);
   label.setAttribute("align", "center");
   label.setAttribute("anchor", "center");
@@ -423,10 +478,10 @@ function updatePoiDistances(position) {
     .sort((a, b) => a.distance - b.distance);
 
   sortedPois.forEach(poi => {
-    const label = document.querySelector(`#${poi.id}-label`);
+    const label = document.querySelector(#${poi.id}-label);
 
     if (label) {
-      label.setAttribute("value", `${poi.name}\n${Math.round(poi.distance)} m`);
+      label.setAttribute("value", ${poi.name}\n${Math.round(poi.distance)} m);
     }
   });
 
@@ -444,10 +499,10 @@ function updatePoiDistances(position) {
   const headingText =
     currentHeading === null
       ? "Blickrichtung fehlt, Fallback aktiv"
-      : `Blickrichtung ${Math.round(currentHeading)}°`;
+      : Blickrichtung ${Math.round(currentHeading)}°;
 
   setStatus(
-    `Standort aktiv: ±${Math.round(accuracy)} m | POIs sichtbar: ${visiblePoiCount} | ${headingText}`
+    Standort aktiv: ±${Math.round(accuracy)} m | POIs sichtbar: ${visiblePoiCount} | ${headingText}
   );
 
   updateMapLocation(longitude, latitude, accuracy);
@@ -520,13 +575,22 @@ function updateAFrameCameraHeading() {
 }
 
 function handleDeviceOrientation(event) {
-  const heading = getHeadingFromEvent(event);
+  const rawHeading = getHeadingFromEvent(event);
 
-  if (heading === null) {
+  if (rawHeading === null) {
     return;
   }
 
-  currentHeading = heading;
+  const harmonizedHeading = getHarmonizedHeading(rawHeading);
+
+  // POIs werden nur neu berechnet, wenn sich die harmonisierte Blickrichtung
+  // um mindestens einen 0,1-Radiant-Schritt geändert hat.
+  if (lastHeadingBucket === harmonizedHeading.bucket) {
+    return;
+  }
+
+  lastHeadingBucket = harmonizedHeading.bucket;
+  currentHeading = harmonizedHeading.degrees;
 
   updateAFrameCameraHeading();
   updateHeadingCone();
@@ -936,7 +1000,7 @@ function updateMapLocation(lon, lat, accuracy) {
   const locationFeature = new ol.Feature({
     geometry: new ol.geom.Point(userCoords),
     name: "Mein Standort",
-    description: `Genauigkeit: ca. ${Math.round(accuracy || 0)} Meter`,
+    description: Genauigkeit: ca. ${Math.round(accuracy || 0)} Meter,
     type: "location"
   });
 
@@ -1117,9 +1181,9 @@ async function calculateRouteToPoi(poiFeature) {
     const profile = profileConfig[selectedProfile] || profileConfig.foot;
 
     const osrmUrl =
-      `https://routing.openstreetmap.de/${profile.serverPath}/route/v1/${profile.apiProfile}/` +
-      `${startLon},${startLat};${endLon},${endLat}` +
-      `?overview=full&geometries=geojson&steps=false`;
+      https://routing.openstreetmap.de/${profile.serverPath}/route/v1/${profile.apiProfile}/ +
+      ${startLon},${startLat};${endLon},${endLat} +
+      ?overview=full&geometries=geojson&steps=false;
 
     const response = await fetch(osrmUrl);
 
